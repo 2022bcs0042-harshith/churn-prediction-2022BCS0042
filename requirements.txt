@@ -8,6 +8,5 @@ pandas
 numpy  
 joblib  
 xgboost
-mlflow 
-mvidently 
+mlflow
 mchedule 
