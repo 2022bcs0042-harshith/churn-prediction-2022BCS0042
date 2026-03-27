@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  churn-api:
+    image: harsh994/churn-risk-api-2022bcs0042:latest
+    container_name: churn-risk-api-2022bcs0042
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+    restart: unless-stopped
