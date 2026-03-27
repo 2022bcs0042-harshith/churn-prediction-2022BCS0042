@@ -34,10 +34,10 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Build Docker image
-        run: docker build -t churn-risk-api .
+        run: docker build -t churn-risk-api-2022bcs0042 .
 
       - name: Verify container starts
         run: |
-          docker run -d -p 8000:8000 --name churn-risk-api churn-risk-api
+          docker run -d -p 8000:8000 --name churn-risk-api-2022bcs0042 churn-risk-api-2022bcs0042
           sleep 5
           curl http://localhost:8000/health
