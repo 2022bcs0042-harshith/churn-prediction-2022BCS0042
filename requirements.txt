@@ -9,3 +9,5 @@ numpy
 joblib  
 xgboost
 mlflow
+evidently==0.4.16
+kaggle
