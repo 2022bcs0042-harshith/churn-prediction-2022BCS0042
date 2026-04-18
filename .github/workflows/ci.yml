@@ -1,3 +1,47 @@
+# # name: Churn Risk API - CI/CD Pipeline
+
+# # on:
+# #   push:
+# #     branches: [main]
+# #   pull_request:
+# #     branches: [main]
+
+# # jobs:
+# #   test:
+# #     runs-on: ubuntu-latest
+
+# #     steps:
+# #       - name: Checkout code
+# #         uses: actions/checkout@v3
+
+# #       - name: Set up Python
+# #         uses: actions/setup-python@v4
+# #         with:
+# #           python-version: "3.11"
+
+# #       - name: Install dependencies
+# #         run: pip install -r requirements.txt
+
+# #       - name: Run tests
+# #         run: pytest tests/ -v
+
+# #   build:
+# #     runs-on: ubuntu-latest
+# #     needs: test
+
+# #     steps:
+# #       - name: Checkout code
+# #         uses: actions/checkout@v3
+
+# #       - name: Build Docker image
+# #         run: docker build -t churn-risk-api-2022bcs0042 .
+
+# #       - name: Verify container starts
+# #         run: |
+# #           docker run -d -p 8000:8000 --name churn-risk-api-2022bcs0042 churn-risk-api-2022bcs0042
+# #           sleep 5
+# #           curl http://localhost:8000/health
+
 # name: Churn Risk API - CI/CD Pipeline
 
 # on:
@@ -5,6 +49,8 @@
 #     branches: [main]
 #   pull_request:
 #     branches: [main]
+#   schedule:
+#     - cron: "0 0 * * 0" # Weekly retraining
 
 # jobs:
 #   test:
@@ -25,9 +71,42 @@
 #       - name: Run tests
 #         run: pytest tests/ -v
 
-#   build:
+#   train-and-track:
 #     runs-on: ubuntu-latest
 #     needs: test
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: "3.11"
+
+#       - name: Install dependencies
+#         run: pip install -r requirements.txt
+
+#       - name: Download dataset
+#         run: |
+#           pip install kaggle
+#           kaggle datasets download -d blastchar/telco-customer-churn -p ml/data --unzip
+#         env:
+#           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+#           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+
+#       - name: Train and track model
+#         run: python -m mlops.experiment_tracking
+
+#       - name: Upload model artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: trained-model
+#           path: ml/models/model.pkl
+
+#   build:
+#     runs-on: ubuntu-latest
+#     needs: train-and-track
 
 #     steps:
 #       - name: Checkout code
@@ -42,6 +121,30 @@
 #           sleep 5
 #           curl http://localhost:8000/health
 
+#   scheduled-retrain:
+#   runs-on: ubuntu-latest
+#   # This runs every Sunday at midnight
+#   # Add this at the top-level 'on:' block:
+#   # schedule:
+#   #   - cron: '0 0 * * 0'
+#   steps:
+#     - uses: actions/checkout@v3
+#     - uses: actions/setup-python@v4
+#       with:
+#         python-version: "3.11"
+#     - run: pip install -r requirements.txt
+#     - run: python -m mlops.retraining.retrain
+# continuous-training:
+#   runs-on: ubuntu-latest
+#   needs: build
+#   if: github.event_name == 'schedule'
+#   steps:
+#     - uses: actions/checkout@v3
+#     - uses: actions/setup-python@v4
+#       with:
+#         python-version: "3.11"
+#     - run: pip install -r requirements.txt
+#     - run: python -m mlops.retraining.retrain
 name: Churn Risk API - CI/CD Pipeline
 
 on:
@@ -50,7 +153,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 0 * * 0" # Weekly retraining
+    - cron: "0 0 * * 0" # Weekly retraining (Sunday)
 
 jobs:
   test:
@@ -121,27 +224,22 @@ jobs:
           sleep 5
           curl http://localhost:8000/health
 
-  scheduled-retrain:
-  runs-on: ubuntu-latest
-  # This runs every Sunday at midnight
-  # Add this at the top-level 'on:' block:
-  # schedule:
-  #   - cron: '0 0 * * 0'
-  steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-    - run: pip install -r requirements.txt
-    - run: python -m mlops.retraining.retrain
-continuous-training:
-  runs-on: ubuntu-latest
-  needs: build
-  if: github.event_name == 'schedule'
-  steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-    - run: pip install -r requirements.txt
-    - run: python -m mlops.retraining.retrain
+  retrain:
+    runs-on: ubuntu-latest
+    # 🔥 Only run on scheduled trigger
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run retraining pipeline
+        run: python -m mlops.retraining.retrain
