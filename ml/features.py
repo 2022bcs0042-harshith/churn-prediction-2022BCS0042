@@ -15,8 +15,8 @@ def load_and_preprocess(filepath: str) -> pd.DataFrame:
 
     # Fix TotalCharges (it has spaces)
     df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-    df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
-    # df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
+    # df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
+    df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
     # Encode binary columns
     binary_cols = [
         "gender", "Partner", "Dependents",
