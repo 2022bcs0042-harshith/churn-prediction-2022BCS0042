@@ -19,7 +19,7 @@ from ml.features import (
 
 MODEL_NAME = "ChurnPredictionModel"
 
-# ✅ FIX: Use file-based MLflow (no DB issues in CI/CD)
+# ✅ FIX: Use file-based MLflow (no DB issues)
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns")
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
@@ -35,17 +35,26 @@ def train_and_track(
 
     with mlflow.start_run() as run:
         print("📦 Loading and preprocessing data...")
+
         df = load_and_preprocess(data_path)
         df = simulate_ticket_features(df)
 
-        feature_cols = get_feature_columns(df)
+        # ✅ FIX: Handle TotalCharges safely (no chained assignment)
+        if "TotalCharges" in df.columns:
+            df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
 
-        # ✅ FIX: Ensure target is binary (0/1)
+        # ✅ FIX: Clean target column
         df["Churn"] = df["Churn"].map({"Yes": 1, "No": 0})
+
+        # Drop invalid rows
+        df = df.dropna(subset=["Churn"])
+
+        feature_cols = get_feature_columns(df)
 
         X = df[feature_cols]
         y = df["Churn"].astype(int)
 
+        # ✅ Split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y,
             test_size=0.2,
@@ -55,17 +64,13 @@ def train_and_track(
 
         # ✅ Data versioning
         data_hash = hashlib.md5(open(data_path, "rb").read()).hexdigest()[:8]
-        print(f"📋 Data version (hash): {data_hash}")
+        print(f"📋 Data version: {data_hash}")
 
-        # ✅ Log parameters
+        # ✅ Log params
         mlflow.log_param("n_estimators", n_estimators)
         mlflow.log_param("max_depth", max_depth)
-        mlflow.log_param("test_size", 0.2)
-        mlflow.log_param("train_samples", len(X_train))
-        mlflow.log_param("test_samples", len(X_test))
-        mlflow.log_param("n_features", len(feature_cols))
         mlflow.log_param("data_version", data_hash)
-        mlflow.log_param("data_path", data_path)
+        mlflow.log_param("n_features", len(feature_cols))
 
         # ✅ Log feature list
         feature_list_path = "feature_list.txt"
@@ -74,6 +79,7 @@ def train_and_track(
         mlflow.log_artifact(feature_list_path)
 
         print("🤖 Training model...")
+
         pipeline = Pipeline([
             ("scaler", StandardScaler()),
             ("classifier", RandomForestClassifier(
@@ -90,7 +96,7 @@ def train_and_track(
         y_pred = pipeline.predict(X_test)
         y_prob = pipeline.predict_proba(X_test)[:, 1]
 
-        # ✅ Ensure correct types
+        # Ensure correct types
         y_test = y_test.astype(int)
         y_pred = y_pred.astype(int)
 
@@ -100,6 +106,7 @@ def train_and_track(
         precision = precision_score(y_test, y_pred)
         recall = recall_score(y_test, y_pred)
 
+        # ✅ Log metrics
         mlflow.log_metric("f1_score", f1)
         mlflow.log_metric("roc_auc", roc_auc)
         mlflow.log_metric("precision", precision)
@@ -113,7 +120,7 @@ def train_and_track(
         # ✅ Log model
         mlflow.sklearn.log_model(pipeline, "model")
 
-        # ✅ Save model locally
+        # ✅ Save locally
         os.makedirs(os.path.dirname(model_output_path), exist_ok=True)
         joblib.dump({
             "pipeline": pipeline,
@@ -122,20 +129,17 @@ def train_and_track(
 
         mlflow.log_artifact(model_output_path)
 
-        print("💾 Model saved and tracked")
+        print("💾 Model saved")
 
         # ✅ Register model
         run_id = run.info.run_id
         model_uri = f"runs:/{run_id}/model"
 
         print(f"\n📝 Registering model as '{MODEL_NAME}'...")
-        registered = mlflow.register_model(
-            model_uri=model_uri,
-            name=MODEL_NAME
-        )
+        registered = mlflow.register_model(model_uri, MODEL_NAME)
 
         version = registered.version
-        print(f"✅ Model registered — Version: {version}")
+        print(f"✅ Registered version: {version}")
 
         # ✅ Move to staging
         client = MlflowClient()
@@ -156,17 +160,15 @@ def train_and_track(
         }
 
 
-def promote_to_production(version: str = None):
+def promote_to_production(version=None):
     client = MlflowClient()
 
     if version is None:
-        staging_versions = client.get_latest_versions(
-            MODEL_NAME, stages=["Staging"]
-        )
-        if not staging_versions:
-            print("❌ No model in Staging")
+        staging = client.get_latest_versions(MODEL_NAME, stages=["Staging"])
+        if not staging:
+            print("❌ No model in staging")
             return
-        version = staging_versions[0].version
+        version = staging[0].version
 
     client.transition_model_version_stage(
         name=MODEL_NAME,
@@ -178,30 +180,17 @@ def promote_to_production(version: str = None):
     print(f"✅ Model v{version} → Production")
 
 
-def archive_model(version: str):
-    client = MlflowClient()
-    client.transition_model_version_stage(
-        name=MODEL_NAME,
-        version=version,
-        stage="Archived"
-    )
-    print(f"🗄️ Model v{version} → Archived")
-
-
 if __name__ == "__main__":
     pipeline, X_test, y_test, metrics = train_and_track(
         data_path="ml/data/WA_Fn-UseC_-Telco-Customer-Churn.csv",
         model_output_path="ml/models/model.pkl"
     )
 
-    print("\n" + "=" * 50)
-    print("📊 Final Metrics:")
+    print("\n📊 Final Metrics:")
     for k, v in metrics.items():
         print(f"{k}: {v}")
 
-    print("\n" + "=" * 50)
+    print("\n🚀 Promoting model...")
     promote_to_production()
 
-    print("\n✅ Done!")
-    print("Run MLflow UI locally:")
-    print("mlflow ui → http://localhost:5000")
+    print("\n✅ DONE")
