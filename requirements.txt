@@ -5,9 +5,9 @@ pytest
 httpx
 scikit-learn  
 pandas  
-numpy  
 joblib  
 xgboost
 mlflow
 evidently==0.4.16
 kaggle
+numpy==1.26.4
