@@ -135,3 +135,14 @@ def predict_churn(request: MLPredictRequest):
     except Exception as e:
         logger.error(f"Error processing ML prediction: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+from mlops.drift.detector import detect_data_drift, simulate_production_drift
+from ml.features import load_and_preprocess, simulate_ticket_features
+
+@app.get("/monitor")
+def monitor_drift():
+    df = load_and_preprocess("ml/data/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+    df = simulate_ticket_features(df)
+    reference = df.sample(500, random_state=42).drop(columns=["Churn"])
+    current = simulate_production_drift(df.sample(500, random_state=99)).drop(columns=["Churn"])
+    summary = detect_data_drift(reference, current)
+    return summary

@@ -15,8 +15,8 @@ def load_and_preprocess(filepath: str) -> pd.DataFrame:
 
     # Fix TotalCharges (it has spaces)
     df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-    df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
-
+    # df["TotalCharges"].fillna(df["TotalCharges"].median(), inplace=True)
+    df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
     # Encode binary columns
     binary_cols = [
         "gender", "Partner", "Dependents",
@@ -82,3 +82,8 @@ def simulate_ticket_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_feature_columns(df: pd.DataFrame) -> list:
     return [col for col in df.columns if col != "Churn"]
+def validate_schema(df: pd.DataFrame, expected_columns: list) -> bool:
+    missing = set(expected_columns) - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+    return True

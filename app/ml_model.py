@@ -32,7 +32,10 @@ class ChurnPredictor:
 
         # Reorder columns to match training
         df = df[self.feature_columns]
-
+        # Before prediction, validate schema
+        missing = [c for c in self.feature_columns if c not in df.columns]
+        if missing:
+            raise ValueError(f"Schema mismatch: missing {missing}")
         # Get prediction and probability
         churn_prob = self.pipeline.predict_proba(df)[0][1]
         churn_pred = self.pipeline.predict(df)[0]
